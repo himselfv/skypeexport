@@ -1,0 +1,24 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.31101.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "skypeexport", "skypeexport.pyproj", "{A03413C5-F3D5-48FF-86E3-8EEF27347E41}"
+EndProject
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "SkypeMerge", "SkypeMerge.pyproj", "{2971E51C-DBD3-47BA-A939-E0FBD562159D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A03413C5-F3D5-48FF-86E3-8EEF27347E41}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A03413C5-F3D5-48FF-86E3-8EEF27347E41}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2971E51C-DBD3-47BA-A939-E0FBD562159D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2971E51C-DBD3-47BA-A939-E0FBD562159D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
