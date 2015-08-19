@@ -128,18 +128,19 @@ for message in db_source.execute('SELECT * FROM messages'):
         # Look for matching remote_id
         leaf = fp_card.get(key)
         if leaf is None:
-            # No remote_id match, probably new
             is_new = True
             new_remote_id_cnt += 1
-            # To be sure the same message can't have different remote_ids, lets check this bucket
-            # for messages with similar timestamp
+            # Safety check: does this bucket have messages with similar timestamp? Suspicious. Same message different remote_ids?
             close_call = min([abs(entry['timestamp']-message['timestamp']) for entry in fp_card.values()])
             if (closest_call < 0) or (close_call < closest_call):
                 closest_call = close_call
-            if close_call < 60:
+            if close_call < 30:
                 close_calls.append(message)
         else:
             is_new = False
+            # Safety check, should not fire
+            if abs(leaf['timestamp']-message['timestamp']) > 30:
+                print '\nWARNING: faulty remote_id match, timestamps differ (%d -> %d)' % (message['id'], leaf['id'])
 
     if is_new:
         row = dict()
