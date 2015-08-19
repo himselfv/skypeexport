@@ -60,6 +60,37 @@ target_convos = {item['identity']:item for item in db_target.execute('SELECT * F
 
 
 print 'Synchronizing messages...'
+# When matching messages, there're only a few things we can rely on:
+#   convo_id (adjusted for local pc)
+#   body_xml
+#   remote_id (with various exceptions)
+#   timestamp (although it rarely matches exactly, and can at times be sufficiently different)
+# So we're going to:
+# 1. Load all target messages and build a hashbag out of exact parts for each.
+# 2. Load source messages.
+# 3. Pass source messages one by one, matching hashbags against targets and then making a best guess based on other properties.
+
+# Hashbag
+class msg_hashbag:
+    def __init__(self, convo_id, body_xml, remote_id):
+        self.convo_id = convo_id
+        self.body_xml = body_xml
+        self.remote_id = remote_id
+
+added_cnt = 0
+checked_cnt = 0
+target_messages = { msg_hashbag(item['convo_id'], item['body_xml'], item['remote_id']) : item for item in db_target.execute('SELECT * FROM messages')}
+for message in db_source.execute('SELECT * FROM messages'):
+    checked_cnt += 1
+    if checked_cnt % 100 == 0:
+        sys.stdout.write('.')
+    if not target_messages.has_key( msg_hashbag(message['convo_id'], message['body_xml'], message['remote_id']) ):
+        print ','
+
+
+
+
+'''
 added_cnt = 0
 checked_cnt = 0
 target_messages = {buffer(item['guid']):item for item in db_target.execute('SELECT * FROM messages')}
@@ -82,6 +113,7 @@ for message in db_source.execute('SELECT * FROM messages'):
         post_row(db_target, 'messages', row)
         added_cnt += 1
 print '\n%d messages added.' % added_cnt
+'''
 
 
 db_target.commit()
