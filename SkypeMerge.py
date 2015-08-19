@@ -1,4 +1,4 @@
-import argparse
+п»їimport argparse
 import sqlite3
 import sys
 
@@ -7,7 +7,7 @@ parser.add_argument('--source-path', type=str, required=True)
 parser.add_argument('--target-path', type=str, required=True)
 args = parser.parse_args()
 
-# Встроенный Row_factory возвращает ущербный dict без редактирования
+# Р’СЃС‚СЂРѕРµРЅРЅС‹Р№ Row_factory РІРѕР·РІСЂР°С‰Р°РµС‚ СѓС‰РµСЂР±РЅС‹Р№ dict Р±РµР· СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёСЏ
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
