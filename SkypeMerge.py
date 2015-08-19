@@ -43,9 +43,9 @@ target_contacts = None
 
 
 print 'Synchronizing conversations...'
-source_convos_by_id = {item['id']:item for item in db_source.execute('SELECT * FROM conversations')}
+source_convos = list(db_source.execute('SELECT * FROM conversations'))
 target_convos = {item['identity']:item for item in db_target.execute('SELECT * FROM conversations')}
-for convo in source_convos_by_id.values():
+for convo in source_convos:
     if not target_convos.has_key(convo['identity']):
         print convo['identity']
         row = dict()
@@ -55,14 +55,15 @@ for convo in source_convos_by_id.values():
             row[key] = convo[key]
         post_row(db_target, 'conversations', row)
 
-# Rebuild map
+# Rebuild map source -> target
 target_convos = {item['identity']:item for item in db_target.execute('SELECT * FROM conversations')}
+convo_id_map = {convo['id']:target_convos[convo['identity']]['id'] for convo in source_convos}
 
 
 print 'Synchronizing messages...'
 # When matching messages, there're only a few things we can rely on:
 #   convo_id (adjusted for local pc)
-#   body_xml
+#   body_xml and type
 #   remote_id (with various exceptions)
 #   timestamp (although it rarely matches exactly, and can at times be sufficiently different)
 # So we're going to:
@@ -70,50 +71,93 @@ print 'Synchronizing messages...'
 # 2. Load source messages.
 # 3. Pass source messages one by one, matching hashbags against targets and then making a best guess based on other properties.
 
-# Hashbag
-class msg_hashbag:
-    def __init__(self, convo_id, body_xml, remote_id):
-        self.convo_id = convo_id
-        self.body_xml = body_xml
-        self.remote_id = remote_id
+# Messages are grouped into cards by convo:body:type, each card mapping remote_ids => messages
+target_messages = {}
+target_message_count = 0
+sys.stdout.write('Reading')
+for message in db_target.execute('SELECT * FROM messages'):
+    fingerprint = (message['convo_id'], message['body_xml'], message['type'])
+    key = message['remote_id']
+    # There're a few messages with remote_id = NULL, they break remote_id uniqueness but don't deserve
+    # special treatment.
+    # So we just substitute ids with some clearly unique ones (no NULL is equal to other NULL).
+    if key is None:
+        key = 'tnull_'+str(message['id'])
 
-added_cnt = 0
-checked_cnt = 0
-target_messages = { msg_hashbag(item['convo_id'], item['body_xml'], item['remote_id']) : item for item in db_target.execute('SELECT * FROM messages')}
-for message in db_source.execute('SELECT * FROM messages'):
-    checked_cnt += 1
-    if checked_cnt % 100 == 0:
+    fp_card = target_messages.get(fingerprint, {}) # existing or new {dict}
+    if key in fp_card:
+        raise Exception('Duplicate existing convo:body:remote_id triplet')
+    fp_card[key] = message # add
+
+    if len(fp_card) == 1:
+        target_messages[fingerprint] = fp_card # publish new card
+    target_message_count += 1
+    if target_message_count % 250 == 0:
         sys.stdout.write('.')
-    if not target_messages.has_key( msg_hashbag(message['convo_id'], message['body_xml'], message['remote_id']) ):
-        print ','
+print '\n%d messages initialized in %d fingerprint cards.' % (target_message_count, len(target_messages))
 
 
-
-
-'''
-added_cnt = 0
+# Then we parse incoming messages one by one, first matching them to a node,
+# then to a specific leaf (and noting any possible ambiguity)
 checked_cnt = 0
-target_messages = {buffer(item['guid']):item for item in db_target.execute('SELECT * FROM messages')}
+added_cnt = 0
+new_fingerprint_cnt = 0 # completely new messages, different convo:body:type
+new_remote_id_cnt = 0 # convo:body:type matches some messages but none with the same remote_id
+close_calls = [] # new_remote_id + there are some messages with similar timestamp so we are concerned
+closest_call = -1
+
+sys.stdout.write('Checking')
 for message in db_source.execute('SELECT * FROM messages'):
-    checked_cnt += 1
-    if checked_cnt % 100 == 0:
-        sys.stdout.write('.')
-    if not target_messages.has_key(buffer(message['guid'])):
+    convo_id = convo_id_map[message['convo_id']] # localize convo id
+    fingerprint = (convo_id, message['body_xml'], message['type'])
+    key = message['remote_id']
+    if key is None:
+        key = 'snull_'+str(message['id'])
+
+    # We have to be wary of two scenarios:
+    # 1. Same exact message (convo:body:type) with different remote_ids
+    # 2. Different messages with same convo:body:type and same remote_id
+
+    is_new = False
+    fp_card = target_messages.get(fingerprint)
+    if fp_card is None:
+        # Not even convo:body:type matches. 100% new
+        is_new = True
+        new_fingerprint_cnt += 1
+    else:
+        # Look for matching remote_id
+        leaf = fp_card.get(key)
+        if leaf is None:
+            # No remote_id match, probably new
+            is_new = True
+            new_remote_id_cnt += 1
+            # To be sure the same message can't have different remote_ids, lets check this bucket
+            # for messages with similar timestamp
+            close_call = min([abs(entry['timestamp']-message['timestamp']) for entry in fp_card.values()])
+            if (closest_call < 0) or (close_call < closest_call):
+                closest_call = close_call
+            if close_call < 60:
+                close_calls.append(message)
+        else:
+            is_new = False
+
+    if is_new:
         row = dict()
         for key in ('is_permanent', 'chatname', 'author', 'from_dispname', 'guid', 'dialog_partner', 'timestamp', 'type',
                     'sending_status', 'consumption_status', 'edited_by', 'edited_timestamp', 'body_xml', 'identities',
-                    'participant_count', 'chatmsg_type', 'chatmsg_status', 'body_is_rawxml', 'crc'):
+                    'participant_count', 'chatmsg_type', 'chatmsg_status', 'body_is_rawxml', 'crc', 'remote_id'):
             row[key] = message[key]
-        # Adjust convo id
-        convo_id = message['convo_id']
-        convo = source_convos_by_id[convo_id]
-        convo_identity = convo['identity']
-        target_convo = target_convos[convo_identity]
-        row['convo_id'] = target_convo['id']
+        row['convo_id'] = convo_id
         post_row(db_target, 'messages', row)
         added_cnt += 1
-print '\n%d messages added.' % added_cnt
-'''
+
+    checked_cnt += 1
+    if checked_cnt % 250 == 0:
+        sys.stdout.write('.')
+print '\n%d messages read, %d messages added.' % (checked_cnt, added_cnt)
+print '%d new fingerprints, %d new remote_ids, %d close calls (%d seconds closest)' % (new_fingerprint_cnt, new_remote_id_cnt, len(close_calls), closest_call)
+print close_calls
+
 
 
 db_target.commit()
