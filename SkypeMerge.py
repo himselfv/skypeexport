@@ -2,7 +2,15 @@
 import sqlite3
 import sys
 
-parser = argparse.ArgumentParser(description='Merges one Skype database into another. Note that the resulting database is not meant to be usable with Skype -- see readme')
+'''
+WARNING:
+1. You have to have a target database beforehand. Copy main.db from any of the PCs.
+2. The resulting database is NOT meant to be usable with Skype. Not all fields and not all tables are synchronized,
+ it's only good enough to work for skype-export to produce your combined logs.
+3. All databases must be for the same skype user. This tool will not merge databases of different users.
+'''
+
+parser = argparse.ArgumentParser(description='Merges one Skype database into another. Note that the resulting database is not meant to be usable with Skype -- see comments in code')
 parser.add_argument('--source-path', type=str, required=True, help='Local AppData\\Skype path to merge into main repository')
 parser.add_argument('--target-path', type=str, required=True, help='Main AppData\\Skype path to merge local one into')
 parser.add_argument('--pretend', action='store_true', help='Do not save anything, run the operations dry')
@@ -10,7 +18,7 @@ parser.add_argument('--timestamp_leeway', default=120, help='Trigger warning it 
                         +'(see comments in code to understand why timestamps may differ). Usually default settings is good enough.')
 args = parser.parse_args()
 
-# Встроенный Row_factory возвращает ущербный dict без редактирования
+# sqlite3.row_factory gives read-only dict
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
@@ -29,6 +37,11 @@ def post_row(conn, tablename, rec):
     conn.execute('INSERT INTO '+tablename+' ('+keys+') VALUES ('+question_marks+')', values)
 
 
+
+'''
+Sync is trivial, just match skypename. We assume these cannot change (otherwise it's undoable anyway).
+'''
+
 print 'Synchronizing contacts...'
 target_contacts = {item['skypename']:item for item in db_target.execute('SELECT * FROM contacts')}
 for contact in db_source.execute('SELECT * FROM contacts'):
@@ -44,6 +57,12 @@ for contact in db_source.execute('SELECT * FROM contacts'):
 
 target_contacts = None
 
+
+
+'''
+Convo sync is trivial again, match identity. For contacts it's a skypename, so invariant.
+TODO: There's a slight chance groupchat_ids ($Source/$Target;$Id) may be different due to different $Id, or chatroom_ids (long numeric ids). Needs to be checked.
+'''
 
 print 'Synchronizing conversations...'
 source_convos = list(db_source.execute('SELECT * FROM conversations'))
@@ -63,33 +82,71 @@ target_convos = {item['identity']:item for item in db_target.execute('SELECT * F
 convo_id_map = {convo['id']:target_convos[convo['identity']]['id'] for convo in source_convos}
 
 
-print 'Synchronizing messages...'
-# When matching messages, there're only a few things we can rely on:
-#   convo_id (adjusted for local pc)
-#   body_xml and type
-#   remote_id (with various exceptions)
-#   timestamp (although it rarely matches exactly, and can at times be sufficiently different)
-# So we're going to:
-# 1. Load all target messages and build a hashbag out of exact parts for each.
-# 2. Load source messages.
-# 3. Pass source messages one by one, matching hashbags against targets and then making a best guess based on other properties.
 
-# Messages are grouped into cards by convo:body:type, each card mapping remote_ids => messages
+'''
+Matching messages is non-trivial, there's no single 'unique_id' field to check. We have to half-match, half-guess.
+Good news is the results are more or less certain nevertheless.
+
+Fields we SHOULD rely on. These fields are the core of the message, if any changes it's 100% a completely different message (spare for message editing which we'll cover later).
+  convo_id
+  author
+  body_xml
+  type
+
+Yet there can legally be messages in the same conversation, by the same author, with the same content.
+
+Fields we can consult to further distinguish them:
+
+  timestamp:
+    A bit off between PCs due to clock discrepancy (tens of seconds). Further off when one side had misconfigured time zone (hours).
+    Even further off when one side had wrong time (month, years, anything).
+
+  remote_id:
+    Appears to be a `messages.id` at a recipient PC, or a relay PC, whoever receives the message first. In most cases, once set, this will not change
+    and will travel with the message wherever it goes.
+    It is not unique by itself:
+    - Comes from different PCs (sometimes one relay, sometimes another, with different ids)
+    - Recipient/relay may reinstall Skype, restarting the ids.
+    - There ARE duplicate remote_ids, even for the same convo.
+    It is also not quite invariant between PCs:
+    - Some rare message types skip remote_id sync (e.g. some authorization requests get remote_id == local messages.id on both sides)
+    - Rarely messages have it as NULL (again, often authorization requests)
+    - Rarely messages come in pairs, having same convo:body:remote_id but different types (e.g. 30:39).
+
+    Therefore we cannot quite rely on it alone. But it works very well to distinguish between otherwise similar messages, because
+    it's improbable that both rare events happen at once.
+
+Fields we CANNOT rely on for matching:
+  id: database-local
+  guid: despite the potential, database-local
+  crc: reflects message content, but not 100% reliable. Constant for some types of messages, for messages < 2-4 chars, often same body_xml gives different crc.
+       Better just check body_xml.
+  dialog_partner,
+  participant_count: messages are grouped into conversations differently on different PCs
+
+The strategy is:
+1. Match message by its fingerprint (convo:author:body:type).
+2. If there are several matches, select one with matching remote_id.
+3. If no remote_id matches, assume new message but run safety checks on timestamp (are there suspiciously well timed messages?)
+'''
+
+print 'Synchronizing messages...'
+# Messages are grouped into cards by fingerprint, each card mapping remote_ids => messages
 target_messages = {}
 target_message_count = 0
 sys.stdout.write('Reading')
 for message in db_target.execute('SELECT * FROM messages'):
     fingerprint = (message['convo_id'], message['author'], message['body_xml'], message['type'])
     key = message['remote_id']
-    # There're a few messages with remote_id = NULL, they break remote_id uniqueness but don't deserve
-    # special treatment.
-    # So we just substitute ids with some clearly unique ones (no NULL is equal to other NULL).
+    # There're a few messages with remote_id = NULL, they break remote_id uniqueness. We could map
+    # remote_ids to arrays but that's too costly for just a few cases.
+    # Substitute NULLs with some unique ids, but same ones each time (or we'll add NULL entries again and again)
     if key is None:
-        key = 'tnull_'+str(message['id'])
+        key = message['id'] # local id, why not
 
     fp_card = target_messages.get(fingerprint, {}) # existing or new {dict}
     if key in fp_card:
-        raise Exception('Duplicate existing convo:body:remote_id triplet')
+        raise Exception('Duplicate existing fingerprint:remote_id')
     fp_card[key] = message # add
 
     if len(fp_card) == 1:
@@ -97,11 +154,10 @@ for message in db_target.execute('SELECT * FROM messages'):
     target_message_count += 1
     if target_message_count % 250 == 0:
         sys.stdout.write('.')
-print '\n%d messages initialized in %d fingerprint cards.' % (target_message_count, len(target_messages))
+print '\n%d messages initialized in %d cards.' % (target_message_count, len(target_messages))
 
 
-# Then we parse incoming messages one by one, first matching them to a node,
-# then to a specific leaf (and noting any possible ambiguity)
+# Then we parse incoming messages one by one, first matching them to a node, then to a specific leaf (noting any possible ambiguity)
 checked_cnt = 0
 added_cnt = 0
 new_fingerprint_cnt = 0 # completely new messages, different convo:body:type
@@ -115,12 +171,9 @@ for message in db_source.execute('SELECT * FROM messages'):
     fingerprint = (convo_id, message['author'], message['body_xml'], message['type'])
     key = message['remote_id']
     if key is None:
-        key = 'snull_'+str(message['id'])
+        key = message['id']
 
-    # We have to be wary of two scenarios:
-    # 1. Same exact message (convo:body:type) with different remote_ids
-    # 2. Different messages with same convo:body:type and same remote_id
-
+    # Figure if this is a new message
     is_new = False
     fp_card = target_messages.get(fingerprint)
     if fp_card is None:
@@ -152,6 +205,8 @@ for message in db_source.execute('SELECT * FROM messages'):
                     'participant_count', 'chatmsg_type', 'chatmsg_status', 'body_is_rawxml', 'crc', 'remote_id'):
             row[key] = message[key]
         row['convo_id'] = convo_id
+        if message['remote_id'] is None:
+            row['remote_id'] = message['id'] # use local id if remote_id is not set
         post_row(db_target, 'messages', row)
         added_cnt += 1
 
@@ -160,7 +215,6 @@ for message in db_source.execute('SELECT * FROM messages'):
         sys.stdout.write('.')
 print '\n%d messages read, %d messages added.' % (checked_cnt, added_cnt)
 print '%d new fingerprints, %d new remote_ids, %d close calls (%d seconds closest)' % (new_fingerprint_cnt, new_remote_id_cnt, len(close_calls), closest_call)
-print close_calls
 
 
 if not args.pretend:
