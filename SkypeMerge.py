@@ -61,7 +61,8 @@ target_contacts = None
 
 '''
 Convo sync is trivial again, match identity. For contacts it's a skypename, so invariant.
-TODO: There's a slight chance groupchat_ids ($Source/$Target;$Id) may be different due to different $Id, or chatroom_ids (long numeric ids). Needs to be checked.
+There's a slight chance some groupchats might be duplicated, the same groupchat sometimes gets different IDs at different PCs
+($Source/$Target;$Id, 19:code@skype.thread). At this point nothing can be done about it.
 '''
 
 print 'Synchronizing conversations...'
