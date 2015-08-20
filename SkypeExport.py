@@ -8,10 +8,6 @@ import re
 
 # Requires winshell, pywin32 (manual download)
 
-# TODO по большому счёту:
-#  - Сделать обновление файлов, а не замену. Чтобы новые записи втискивались между старыми. Иначе всегда есть риск, что база Skype просрётся и всё потеряется.
-#  - Читать chatsync (см. ниже)
-
 # ОБЩЕЕ
 # База данных Skype хранится в AppData/Roaming/Skype/[login]/main.db.
 # Она в формате SQLite.
