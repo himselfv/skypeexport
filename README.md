@@ -12,23 +12,26 @@ Can also merge Skype databases from different PCs (Skype tries to copy all messa
 ### Exporting logs ###
 
 ```
-skype-export --profile %APPDATA%\Skype\Your_Nickname --export-conversations SkypeLogs\Contacts --export-rooms SkypeLogs\GroupChats --add-shortcuts SkypeLogs
+skype-export --profile %APPDATA%\Skype\Your_Nickname
+--export-conversations SkypeLogs\Contacts
+--export-rooms SkypeLogs\GroupChats
+--add-shortcuts SkypeLogs
 ```
 
 `--profile` Path to Skype profile (usually AppData\Roaming\Skype\Your_Nickname)
 
-`--export-conversations` Where to place text files with logs for individual contacts (one on one)
+`--export-conversations` Where to place logs for individual contacts (one on one)
 
 `--export-rooms` Where to place logs for chat rooms / groupchats
 
-`--add-shortcuts` By default, skype-export will name all logs by contact skype ids (so that you don't get multiple logs with the same content as someone changes their display name). With this, it'll create shortcuts for contact Display names too.
+`--add-shortcuts` skype-export names logs by contact skype ids (so that you don't get multiple logs with the same content as someone changes their display name). With this, it'll create shortcuts for contact Display names too.
 
 Each time you run the export, it'll recreate and repopulate all affected files, but will keep unrelated files intact.
 
 
 ### Merging databases ###
 
-If you have Skype installed on several PCs, they try to keep messages synchronized but often fail. Different PCs usually know about different messages. Run this tool on each PC, merging local data into a common database, and then run skype-export on a common database to have all logs from all PCs in one place.
+If you have Skype installed on several PCs, it tries to keep messages synchronized. But this has limitations, and often different PCs have very different conversations. Run this tool on each PC, merging local data into a common database, and then run skype-export on a common database to have all logs from all PCs in one place.
 
 ```
 skype-merge --source-path %APPDATA%\Skype\Your_Nickname --target-path SkypeLogs\CommonDb
