@@ -60,26 +60,63 @@ target_contacts = None
 
 
 '''
-Convo sync is trivial again, match identity. For contacts it's a skypename, so invariant.
-There's a slight chance some groupchats might be duplicated, the same groupchat sometimes gets different IDs at different PCs
-($Source/$Target;$Id, 19:code@skype.thread). At this point nothing can be done about it.
+Convo sync is straightforward, match identity. For contacts it's a skypename, so invariant.
+There's a chance some groupchats can have different IDs at different PCs, so we have to check alt_identity too.
 '''
+
+# Returns a set of main and all alternate identities for a convo
+def all_identities(convo):
+    identities = {convo['identity']}
+    alt_identities = convo['alt_identity']
+    if alt_identities is not None:
+        # I'm not sure there can be multiple originally, but we're using it internally
+        identities |= set(alt_identities.split(' '))
+    return identities
+
+# Builds an identity -> convo map
+def convo_map_by_ids(db):
+    map = {}
+    for convo in db_target.execute('SELECT * FROM conversations'):
+        for identity in all_identities(convo):
+            if identity in map:
+                raise Exception('Duplicate identity %s listed as alt_identity for %s') % (identity, convo['identity'])
+            map[identity] = convo
+    return map
 
 print 'Synchronizing conversations...'
 source_convos = list(db_source.execute('SELECT * FROM conversations'))
-target_convos = {item['identity']:item for item in db_target.execute('SELECT * FROM conversations')}
+target_convos = convo_map_by_ids(db_target)
 for convo in source_convos:
-    if not target_convos.has_key(convo['identity']):
-        print convo['identity']
-        row = dict()
-        for key in ('is_permanent', 'identity', 'type', 'is_bookmarked', 'given_displayname', 'displayname',
-                    'creator', 'creation_timestamp', 'my_status', 'passwordhint', 'meta_name', 'meta_topic',
-                    'meta_guidelines', 'meta_picture', 'guid', 'is_blocked'):
-            row[key] = convo[key]
-        post_row(db_target, 'conversations', row)
+    match = None
+    convo_identities = all_identities(convo)
+    for identity in convo_identities:
+        match = target_convos.get(identity)
+        if match is not None: break
+    if match:
+        # Make sure shared one has all identities, or mapping later will fail
+        match_identities = all_identities(match)
+        if (convo_identities - match_identities):
+            match['alt_identity'] = ' '.join((convo_identities | match_identities) - {match['identity']})
+            match['alt_identity_updated'] = True # mark for updating
+        continue
 
-# Rebuild map source -> target
-target_convos = {item['identity']:item for item in db_target.execute('SELECT * FROM conversations')}
+    # Insert new
+    print convo['identity']
+    row = dict()
+    for key in ('is_permanent', 'identity', 'type', 'is_bookmarked', 'given_displayname', 'displayname',
+                'creator', 'creation_timestamp', 'my_status', 'passwordhint', 'meta_name', 'meta_topic',
+                'meta_guidelines', 'meta_picture', 'guid', 'is_blocked', 'alt_identity'):
+        row[key] = convo[key]
+    post_row(db_target, 'conversations', row)
+
+# Update marked convos
+for convo in target_convos.values():
+    if convo.has_key('alt_identity_updated'):
+        print 'Updating %s identities...' % convo['identity']
+        db_target.execute('UPDATE conversations SET alt_identity=? WHERE id=?', [convo['alt_identity'], convo['id']])
+
+# Rebuild target identity -> convo map
+target_convos = convo_map_by_ids(db_target)
 convo_id_map = {convo['id']:target_convos[convo['identity']]['id'] for convo in source_convos}
 
 
