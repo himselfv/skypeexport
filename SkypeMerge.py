@@ -3,8 +3,11 @@ import sqlite3
 import sys
 
 parser = argparse.ArgumentParser(description='Merges one Skype database into another. Note that the resulting database is not meant to be usable with Skype -- see readme')
-parser.add_argument('--source-path', type=str, required=True)
-parser.add_argument('--target-path', type=str, required=True)
+parser.add_argument('--source-path', type=str, required=True, help='Local AppData\\Skype path to merge into main repository')
+parser.add_argument('--target-path', type=str, required=True, help='Main AppData\\Skype path to merge local one into')
+parser.add_argument('--pretend', action='store_true', help='Do not save anything, run the operations dry')
+parser.add_argument('--timestamp_leeway', default=120, help='Trigger warning it otherwise matching messages have timestamps differ more than by this number of seconds '
+                        +'(see comments in code to understand why timestamps may differ). Usually default settings is good enough.')
 args = parser.parse_args()
 
 # Встроенный Row_factory возвращает ущербный dict без редактирования
@@ -76,7 +79,7 @@ target_messages = {}
 target_message_count = 0
 sys.stdout.write('Reading')
 for message in db_target.execute('SELECT * FROM messages'):
-    fingerprint = (message['convo_id'], message['body_xml'], message['type'])
+    fingerprint = (message['convo_id'], message['author'], message['body_xml'], message['type'])
     key = message['remote_id']
     # There're a few messages with remote_id = NULL, they break remote_id uniqueness but don't deserve
     # special treatment.
@@ -109,7 +112,7 @@ closest_call = -1
 sys.stdout.write('Checking')
 for message in db_source.execute('SELECT * FROM messages'):
     convo_id = convo_id_map[message['convo_id']] # localize convo id
-    fingerprint = (convo_id, message['body_xml'], message['type'])
+    fingerprint = (convo_id, message['author'], message['body_xml'], message['type'])
     key = message['remote_id']
     if key is None:
         key = 'snull_'+str(message['id'])
@@ -134,12 +137,12 @@ for message in db_source.execute('SELECT * FROM messages'):
             close_call = min([abs(entry['timestamp']-message['timestamp']) for entry in fp_card.values()])
             if (closest_call < 0) or (close_call < closest_call):
                 closest_call = close_call
-            if close_call < 30:
+            if close_call < 60:
                 close_calls.append(message)
         else:
             is_new = False
             # Safety check, should not fire
-            if abs(leaf['timestamp']-message['timestamp']) > 30:
+            if abs(leaf['timestamp']-message['timestamp']) > args.timestamp_leeway:
                 print '\nWARNING: faulty remote_id match, timestamps differ (%d -> %d)' % (message['id'], leaf['id'])
 
     if is_new:
@@ -160,6 +163,8 @@ print '%d new fingerprints, %d new remote_ids, %d close calls (%d seconds closes
 print close_calls
 
 
-
-db_target.commit()
+if not args.pretend:
+    db_target.commit()
+else:
+    print 'Saving nothing.'
 db_target.close()
