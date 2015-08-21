@@ -26,9 +26,9 @@ Therefore to export all logs it's enough to go through Conversations and export 
 # Chats #
 Skype groups messages into chats by some internal rules. Chats exist primarily as IDs in messages.chatname field:
 
- * #CreatorId/$PartnerId;$ChatUniqueId    for direct chats
- * #CreatorId/$ChatUniqueId               for chat rooms / groupchats
- * 19:roomcode@thread.skype               for newer chat rooms
+ * `#CreatorId/$PartnerId;$ChatUniqueId`    for direct chats
+ * `#CreatorId/$ChatUniqueId`               for chat rooms / groupchats
+ * `19:roomcode@thread.skype`               for newer chat rooms
 
 There can be multiple chats for one contact, but only one chat for each chat room.
 
