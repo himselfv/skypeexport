@@ -7,6 +7,8 @@ Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "skypeexport", "skypeexport.
 EndProject
 Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "SkypeMerge", "SkypeMerge.pyproj", "{2971E51C-DBD3-47BA-A939-E0FBD562159D}"
 EndProject
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "SkypeSanityChecks", "SkypeSanityChecks.pyproj", "{41FE1ABD-33CC-4704-A29E-D08B76ABF8F6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -17,6 +19,8 @@ Global
 		{A03413C5-F3D5-48FF-86E3-8EEF27347E41}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2971E51C-DBD3-47BA-A939-E0FBD562159D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2971E51C-DBD3-47BA-A939-E0FBD562159D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{41FE1ABD-33CC-4704-A29E-D08B76ABF8F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{41FE1ABD-33CC-4704-A29E-D08B76ABF8F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

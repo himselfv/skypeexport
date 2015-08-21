@@ -5,48 +5,9 @@ import datetime
 import os
 import winshell
 import re
+import SkypeSanityChecks
 
 # Requires winshell, pywin32 (manual download)
-
-# ОБЩЕЕ
-# База данных Skype хранится в AppData/Roaming/Skype/[login]/main.db.
-# Она в формате SQLite.
-# В ней таблицы:
-#   Contacts - все контакты, включая собственный и любые упоминающиеся в чатах.
-#   Conversations - по одному на каждый контакт, с которым переписывался + по одному на каждый GroupChat, в котором участвовал.
-#   Messages - все сообщения в базе. У каждого указан:
-#     conv_id -> conversation, для удостоверения в этом сделан assert_no_convoless_messages()
-#     author+from_dispname: кто его написал.
-#     timestamp и guid.
-#   Всё остальное в messages бывает от случая к случаю:
-#     partner_name: отсутствует в любых формах групповой рассылки и ещё иногда.
-#     identities: перечисляет адресатов операции, есть не всегда
-#     chatname: имя разговора, см. ниже. Есть всегда, но РАЗНОЕ.
-# Таким образом для экспорта всех логов достаточно перебрать Conversations и по каждой экспортировать messages в порядке timestamp.
-
-# РАЗГОВОРЫ
-# Skype группирует сообщения в разговоры по некоторым своим соображениям. Разговор определяется его ID:
-#   #CreatorId/$PartnerId;$ChatUniqueId    для прямых чатов
-#   #CreatorId/$ChatUniqueId               для групповых чатов 
-#   код:комнаты@thread.skype               для групповых чатов, имеющих уникальный ID такого вида
-# Разговор, к которому относится сообщение, указан в chatname.
-# Разговоры представляют собой избыточную информацию, они только группируют сообщения. Адресата или комнату сообщения можно однозначно
-# восстановить по conv_id.
-# По некоторым из разговоров внесены записи с дополнительной информацией в таблицу Chats, но далеко не по всем. Когда в качестве chatname
-# указан id группового чата, информацию по нему всегда можно найти в conversations.
-
-# CHATSYNC
-# Кроме main.db у Скайпа есть ещё база в собственном формате, называется chatsync. Сложно точно сказать, что в ней есть дополнительно.
-# Во всяком случае, там хранятся все версии сообщения, если его редактировали. Возможно так, часть сообщений выгружается туда
-# и в main.db отсутствует (есть сообщения об этом, но непроверенные).
-# Так или иначе, полезно бы её читать, но это геморрой.
-# Ссылки на db-файлы есть в Chats/db_path (и, возможно, conv_dbid).
-# То есть, для получения информации из db-файлов есть стратегии:
-#  - Перебрать все chats, и загрузить все соотв. db-файлы
-#  - Просто загрузить все db-файлы!
-#  - Когда нужны версии конкретной записи, посмотреть по ней chatname, и загрузить только этот db-файл.
-# Всё это пока оставляю на потом.
-# Чтение chatsync: см. также https://github.com/konstantint/skype-chatsync-reader
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-p', '--profile', type=str, required=True, help='Skype profile folder (there could be several for a single windows profile)')
@@ -57,6 +18,8 @@ args = parser.parse_args()
 
 conn = sqlite3.connect(args.profile+'\main.db')
 conn.row_factory = sqlite3.Row
+
+db_sanity_checks(conn)
 
 # Приводит строку к виду, годному в качестве имени файла
 def neuter_name(name):
@@ -83,7 +46,7 @@ def export_log(messages, logname):
         dialog_partner = message['dialog_partner'] # may be null
 
         # Типы сообщений - перечислил все по SELECT DISCTINCT(type) FROM messages на моём компе
-        
+
         #   2: *** <from_dispname> поменял(а) тему разговора на «<body_xml (may be empty)>» ***
         if message_type == 2:
             if body_xml is None:
@@ -170,11 +133,6 @@ def export_conversations(conn, path, conv_type, link_path):
                 link.path =  os.path.abspath(log_filename) # relative wouldn't do
                 link.description = convo['displayname']
 
-def assert_no_convoless_messages(conn):
-    orphans = conn.execute('SELECT * FROM messages WHERE convo_id is Null')
-    for orphan in orphans:
-        raise Exception('Orphan message found - no convo_id!')
-
 # Make sure path exists
 def touch_path(path):
 	try: 
@@ -196,4 +154,3 @@ if args.export_rooms:
     touch_path(args.export_rooms)
     export_conversations(conn, args.export_rooms, 2, args.add_shortcuts)
 
-assert_no_convoless_messages(conn)

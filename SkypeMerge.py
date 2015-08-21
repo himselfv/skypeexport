@@ -1,6 +1,7 @@
 ﻿import argparse
 import sqlite3
 import sys
+import SkypeSanityChecks
 
 '''
 WARNING:
@@ -29,6 +30,8 @@ db_source = sqlite3.connect(args.source_path+'\\main.db')
 db_source.row_factory = dict_factory
 db_target = sqlite3.connect(args.target_path+'\\main.db')
 db_target.row_factory = dict_factory
+db_sanity_checks(db_source)
+db_sanity_checks(db_target)
 
 def post_row(conn, tablename, rec):
     keys = ','.join(rec.keys())
