@@ -54,4 +54,4 @@ There's no harm in running merge any number of times. You can keep target databa
 
 ### Skype database format ###
 
-For those looking into Skype database format, I've put my findings into [a short cheatsheet](SkypeDb.md). Various additional information is available as comments in Python files.
+For those looking into Skype database format, I've put my findings into [a short cheatsheet](SkypeDb.md). Additional information is available as comments in Python files.
