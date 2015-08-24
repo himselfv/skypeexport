@@ -19,7 +19,7 @@ args = parser.parse_args()
 conn = sqlite3.connect(args.profile+'\main.db')
 conn.row_factory = sqlite3.Row
 
-db_sanity_checks(conn)
+SkypeSanityChecks.db_sanity_checks(conn)
 
 # Makes a string suitable to be file name
 def neuter_name(name):
