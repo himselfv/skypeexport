@@ -21,92 +21,87 @@ conn.row_factory = sqlite3.Row
 
 db_sanity_checks(conn)
 
-# Приводит строку к виду, годному в качестве имени файла
+# Makes a string suitable to be file name
 def neuter_name(name):
     reserved_chars ='\\/:*?"<>|'
     for char in reserved_chars:
         name = name.replace(char, '')
     return name
 
-# Получает список сообщений из базы и название файла лога. Экспортирует все сообщения в указанный файл / обновляет файл
-# Возвращает true, если файл по итогам существует (уже был или вновь создан).
+# Accepts database set of messages and log file name. Exports all messages into that file.
+# Returns true if the file was created or rewritten successfully.
 def export_log(messages, logname):
     logf = None
     for message in messages:
-        if logf is None: # не открываем файл до первого сообщения, а то куча пустых
+        if logf is None: # do not create until the first messages to avoid empty files
             logf = codecs.open(logname, 'w', encoding='utf_8_sig')
 
         timestamp = int(message['timestamp'])
         timestamp_str = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
+        type = int(message['type'])
         from_dispname = message['from_dispname']
-        message_type = int(message['type'])
         body_xml = message['body_xml'] # may be null
         identities = message['identities'] # may be null
         dialog_partner = message['dialog_partner'] # may be null
 
-        # Типы сообщений - перечислил все по SELECT DISCTINCT(type) FROM messages на моём компе
+		# Message types - collected with SELECT DISCTINCT(type) FROM messages at available PCs
+		# At this point only Russian messages are available
 
-        #   2: *** <from_dispname> поменял(а) тему разговора на «<body_xml (may be empty)>» ***
-        if message_type == 2:
+        if type == 2:
             if body_xml is None:
-                log_text = u'*** %s поменял(а) тему разговора на пустую. ***' % from_dispname # TODO: непроверено, это ли пишет скайп
+                log_text = message_texts.
+                u'*** %s поменял(а) тему разговора на пустую. ***' % from_dispname # TODO: непроверено, это ли пишет скайп
             else:
                 log_text = u'*** %s поменял(а) тему разговора на «%s» ***' % (from_dispname, body_xml) # проверено
-        #   4: послал приглашение?
-        #   8: я хз, что это значит, но пример нашёл
-        elif message_type == 8:
+        #   4: sent an invintation?
+        #   8: unsure what this means but have an example
+        elif type == 8:
             log_text = u'*** Пользователь %s теперь может участвовать в этом чате. ***' % (from_dispname)
-        #  10: *** <from_dispname> добавил <identities> к этому чату ***
-        elif message_type == 10:
-            log_text = u'*** %s добавил %s к этому чату ***' % (from_dispname, identities) # identities надо бы преобразовать
-        #  12: вас удалили
-        elif message_type == 12:
-            log_text = u'*** %s удалил %s из чата ***' % (from_dispname, identities) # текст не сверен со скайпом
-        #  13: *** <from_dispname> вышел *** [из этого чата]
-        elif message_type == 13:
+        #  10:
+        elif type == 10:
+            log_text = u'*** %s добавил %s к этому чату ***' % (from_dispname, identities) # we should probably convert identities to nicknames
+        #  12: you've been deleted
+        elif type == 12:
+            log_text = u'*** %s удалил %s из чата ***' % (from_dispname, identities) # text not verified by skype
+        #  13: <from_dispname> left
+        elif type == 13:
             log_text = u'*** %s вышел ***' % from_dispname
-        #  30: входящий звонок? *** Пропущенные звонки от <from_dispname> *** (также мб что-то ещё, также см. reason - но не всегда)
-        #  39: пропущенный звонок? *** Пропущенные звонки от <from_dispname> ***
-        elif (message_type == 30) or (message_type == 39):
+        #  30: incoming call?
+        #  39: missing call?
+        elif (type == 30) or (type == 39):
             log_text = u'*** Пропущенные звонки от %s ***' % from_dispname # TODO: Это не совсем правильно, нужно бы разобраться
-        #  50: предложение добавить в список контактов (body_xml содержит сопровождающий текст)
-        elif message_type == 50:
+        #  50: please add me (body_xml contains message)
+        elif type == 50:
             if (body_xml is None) or (body_xml == ''):
                 log_text = u'*** %s просит добавить его в ваш список контактов. ***' % from_dispname
             else:
                 log_text = u'*** %s просит добавить его в ваш список контактов: %s ***' % (from_dispname, body_xml)
-        #  51: отправил контактные данные
-        elif message_type == 51:
+        #  51: sent contact data
+        elif type == 51:
             log_text = u'*** %s отправил контактные данные %s ***' % (from_dispname, dialog_partner)
         #  53:
-        #  60: %s почесал в голове
-        elif message_type == 60:
+        #  60: %s scraches head
+        elif type == 60:
             log_text = from_dispname + body_xml
-        #  61: сообщение
-        elif message_type == 61:
+        #  61: message
+        elif type == 61:
             log_text = from_dispname+': '+body_xml
         #  63:
-        #  68: отправил файл (можно показывать просто body_xml)
-        elif message_type == 68:
+        #  68: sent file (body_xml is enough)
+        elif type == 68:
             log_text = from_dispname+': '+body_xml
-        # 100: что-то типа "присоединился к чату"
-        # 110: сегодня день рождения
-        elif message_type == 110:
+        # 100: something like "joined the chat"
+        # 110: today's birthday
+        elif type == 110:
             log_text = u'*** Сегодня день рождения %s ***' % (from_dispname)
         # 201:
+        # Others:
         else:
             if body_xml is None:
-                log_text = u'%s (неизвестный тип события %d без текста).' % (from_dispname, message_type)
+                log_text = u'%s (неизвестный тип события %d без текста).' % (from_dispname, type)
             else:
-                log_text = u'%s (неизвестный тип события %d): %s' % (from_dispname, message_type, body_xml)
-
-        # Ещё где-то должны быть:
-        # send file
-        # receive file
-        # outgoing call
-        # incoming call
-        # voicemail
+                log_text = u'%s (неизвестный тип события %d): %s' % (from_dispname, type, body_xml)
 
         msg = '['+timestamp_str+'] '+log_text;
         logf.write(msg+'\n')
