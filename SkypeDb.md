@@ -1,5 +1,5 @@
 # Overview #
-Skype keeps database in AppData\Roaming\Skype\[login]\main.db. It's in SQLite format.
+Skype keeps database in AppData\Roaming\Skype\\[login]\main.db. It's in SQLite format.
 
 Main tables:
 
