@@ -46,40 +46,39 @@ def export_log(messages, logname):
         dialog_partner = message['dialog_partner'] # may be null
 
 		# Message types - collected with SELECT DISCTINCT(type) FROM messages at available PCs
-		# At this point only Russian messages are available
+		# At this point only English messages are available
 
         if type == 2:
             if body_xml is None:
-                log_text = message_texts.
-                u'*** %s поменял(а) тему разговора на пустую. ***' % from_dispname # TODO: непроверено, это ли пишет скайп
+                log_text = u'*** %s changed the topic to nothing. ***' % from_dispname
             else:
-                log_text = u'*** %s поменял(а) тему разговора на «%s» ***' % (from_dispname, body_xml) # проверено
+                log_text = u'*** %s changed the topic to «%s» ***' % (from_dispname, body_xml)
         #   4: sent an invintation?
         #   8: unsure what this means but have an example
         elif type == 8:
-            log_text = u'*** Пользователь %s теперь может участвовать в этом чате. ***' % (from_dispname)
+            log_text = u'*** %s can now participate in this chat ***' % (from_dispname)
         #  10:
         elif type == 10:
-            log_text = u'*** %s добавил %s к этому чату ***' % (from_dispname, identities) # we should probably convert identities to nicknames
+            log_text = u'*** %s added %s to this chat ***' % (from_dispname, identities) # should probably convert identities to nicknames
         #  12: you've been deleted
         elif type == 12:
-            log_text = u'*** %s удалил %s из чата ***' % (from_dispname, identities) # text not verified by skype
+            log_text = u'*** %s removed %s from this chat ***' % (from_dispname, identities)
         #  13: <from_dispname> left
         elif type == 13:
-            log_text = u'*** %s вышел ***' % from_dispname
+            log_text = u'*** %s left ***' % from_dispname
         #  30: incoming call?
         #  39: missing call?
         elif (type == 30) or (type == 39):
-            log_text = u'*** Пропущенные звонки от %s ***' % from_dispname # TODO: Это не совсем правильно, нужно бы разобраться
+            log_text = u'*** Missing calls from %s ***' % from_dispname
         #  50: please add me (body_xml contains message)
         elif type == 50:
             if (body_xml is None) or (body_xml == ''):
-                log_text = u'*** %s просит добавить его в ваш список контактов. ***' % from_dispname
+                log_text = u'*** %s asks you to add them as a contact. ***' % from_dispname
             else:
-                log_text = u'*** %s просит добавить его в ваш список контактов: %s ***' % (from_dispname, body_xml)
+                log_text = u'*** %s asks you to add them as a contact: %s ***' % (from_dispname, body_xml)
         #  51: sent contact data
         elif type == 51:
-            log_text = u'*** %s отправил контактные данные %s ***' % (from_dispname, dialog_partner)
+            log_text = u'*** %s sent contact data to %s ***' % (from_dispname, dialog_partner)
         #  53:
         #  60: %s scraches head
         elif type == 60:
@@ -94,14 +93,14 @@ def export_log(messages, logname):
         # 100: something like "joined the chat"
         # 110: today's birthday
         elif type == 110:
-            log_text = u'*** Сегодня день рождения %s ***' % (from_dispname)
+            log_text = u'*** Today is %s birthday ***' % (from_dispname)
         # 201:
         # Others:
         else:
             if body_xml is None:
-                log_text = u'%s (неизвестный тип события %d без текста).' % (from_dispname, type)
+                log_text = u'%s (unknown message type %d without text).' % (from_dispname, type)
             else:
-                log_text = u'%s (неизвестный тип события %d): %s' % (from_dispname, type, body_xml)
+                log_text = u'%s (unknown message type %d): %s' % (from_dispname, type, body_xml)
 
         msg = '['+timestamp_str+'] '+log_text;
         logf.write(msg+'\n')
