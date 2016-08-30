@@ -122,10 +122,13 @@ def export_conversations(conn, path, conv_type, link_path):
         exported = export_log(messages, log_filename)
 
         if exported and link_path:
-            link_filename = link_path+'\\'+neuter_name(convo['displayname'])+'.lnk'
+            displayname = convo['displayname']
+            if not displayname: # Some convos don't have it
+                displayname = cname
+            link_filename = link_path+'\\'+neuter_name(displayname)+'.lnk'
             with winshell.shortcut(link_filename) as link:
-                link.path =  os.path.abspath(log_filename) # relative wouldn't do
-                link.description = convo['displayname']
+                link.path = os.path.abspath(log_filename) # relative wouldn't do
+                link.description = displayname
 
 # Make sure path exists
 def touch_path(path):
